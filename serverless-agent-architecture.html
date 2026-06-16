@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Low-Cost Serverless Agent — AWS Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:         #080C18;
+    --s1:         #0D1220;
+    --s2:         #131928;
+    --s3:         #192133;
+    --border:     rgba(255,255,255,0.07);
+    --border2:    rgba(255,255,255,0.12);
+    --text:       #DFE7F3;
+    --muted:      #64748B;
+    --dim:        #3D4D60;
+
+    --amber:      #FF9500;
+    --amber-dim:  rgba(255,149,0,0.12);
+    --teal:       #00C9B1;
+    --teal-dim:   rgba(0,201,177,0.10);
+    --red:        #F04F54;
+    --red-dim:    rgba(240,79,84,0.10);
+    --blue:       #5AA9F0;
+    --blue-dim:   rgba(90,169,240,0.10);
+    --purple:     #A78BFA;
+    --purple-dim: rgba(167,139,250,0.10);
+    --green:      #34D399;
+    --green-dim:  rgba(52,211,153,0.10);
+    --gold:       #D4A017;
+    --gold-dim:   rgba(212,160,23,0.10);
+    --pink:       #F472B6;
+    --pink-dim:   rgba(244,114,182,0.10);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .page { max-width: 1080px; margin: 0 auto; padding: 32px 20px 60px; }
+
+  /* ── Header ────────────────────────────────────────── */
+  .hd { text-align: center; margin-bottom: 28px; }
+  .hd-badge {
+    display: inline-block; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--amber); border: 1px solid rgba(255,149,0,0.3);
+    background: rgba(255,149,0,0.07); padding: 3px 12px; border-radius: 20px;
+    margin-bottom: 14px;
+  }
+  .hd h1 {
+    font-size: clamp(22px, 4vw, 34px); font-weight: 900;
+    letter-spacing: -1px; color: #fff; line-height: 1.1;
+  }
+  .hd h1 span { color: var(--amber); }
+  .hd p { color: var(--muted); font-size: 12px; margin-top: 8px; max-width: 600px; margin-inline: auto; }
+
+  /* ── Metrics row ────────────────────────────────────── */
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px; }
+  .metric {
+    background: var(--s1); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 12px; text-align: center;
+  }
+  .metric .num { font-size: clamp(22px, 3vw, 30px); font-weight: 900; line-height: 1; }
+  .metric .lbl { font-size: 10px; color: var(--muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.8px; }
+  .num-green  { color: var(--teal); }
+  .num-amber  { color: var(--amber); }
+  .num-blue   { color: var(--blue); }
+  .num-white  { color: #fff; }
+
+  /* ── Section title ───────────────────────────────────── */
+  .sec-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--muted); margin: 32px 0 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sec-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── Flow connector ──────────────────────────────────── */
+  .flow {
+    display: flex; align-items: center; justify-content: center;
+    height: 28px; gap: 8px; color: var(--dim); font-size: 10px;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px;
+  }
+  .flow-line { width: 1px; height: 100%; background: linear-gradient(to bottom, transparent, var(--border2), transparent); }
+
+  /* ── Layer card ──────────────────────────────────────── */
+  .layer {
+    border-radius: 14px; border: 1px solid var(--border);
+    background: var(--s1); overflow: hidden;
+    position: relative;
+  }
+  .layer::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    border-radius: 14px 0 0 14px;
+  }
+
+  .lhd {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    padding: 11px 16px 11px 20px; border-bottom: 1px solid var(--border);
+  }
+  .ltitle { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; }
+  .lcost {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
+    padding: 2px 10px; border-radius: 20px; border: 1px solid transparent;
+  }
+
+  .lbody { padding: 14px 16px 14px 20px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 11px; border-radius: 7px; font-size: 11px;
+    font-weight: 500; border: 1px solid transparent;
+  }
+  .chip-mono .chip-name { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+
+  .chip-k { background: var(--s2); border-color: var(--border); color: var(--text); }
+  .chip-n { border-color: rgba(0,201,177,0.3); background: var(--teal-dim); color: var(--teal); }
+  .chip-o { border-color: rgba(255,149,0,0.3); background: var(--amber-dim); color: var(--amber); }
+
+  .rm-row { margin-top: 11px; }
+  .rm-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--red); margin-bottom: 6px; }
+  .rm-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .rm-chip {
+    display: inline-block; padding: 2px 9px; border-radius: 5px; font-size: 10px;
+    background: var(--red-dim); border: 1px solid rgba(240,79,84,0.2);
+    color: var(--red); text-decoration: line-through; text-decoration-color: rgba(240,79,84,0.5);
+  }
+
+  .tip {
+    margin-top: 11px; padding: 9px 12px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 8px; border-left: 2px solid var(--dim);
+    font-size: 11px; color: var(--muted); line-height: 1.7;
+  }
+  .tip strong { color: var(--text); font-weight: 600; }
+
+  /* Per-layer colour theming */
+  .l-users  { --lc: var(--blue);   --lc-dim: var(--blue-dim);   }
+  .l-entry  { --lc: var(--amber);  --lc-dim: var(--amber-dim);  }
+  .l-agent  { --lc: var(--purple); --lc-dim: var(--purple-dim); }
+  .l-intel  { --lc: var(--blue);   --lc-dim: var(--blue-dim);   }
+  .l-know   { --lc: var(--teal);   --lc-dim: var(--teal-dim);   }
+  .l-act    { --lc: var(--gold);   --lc-dim: var(--gold-dim);   }
+  .l-sec    { --lc: var(--pink);   --lc-dim: var(--pink-dim);   }
+
+  .layer::before      { background: var(--lc); }
+  .lhd                { background: color-mix(in srgb, var(--lc) 5%, transparent); }
+  .ltitle             { color: var(--lc); }
+  .lcost              { background: var(--lc-dim); border-color: color-mix(in srgb, var(--lc) 30%, transparent); color: var(--lc); }
+  .tip                { border-color: var(--lc); }
+
+  /* ── Key Swap cards ─────────────────────────────────── */
+  .swaps { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .swap-card {
+    background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  }
+  .swap-head { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .swap-vs { display: grid; grid-template-columns: 1fr 22px 1fr; gap: 8px; align-items: start; }
+  .swap-from, .swap-to {
+    padding: 10px 11px; border-radius: 8px; font-size: 10px; line-height: 1.6;
+  }
+  .swap-from { background: var(--red-dim); border: 1px solid rgba(240,79,84,0.2); color: #c0666a; }
+  .swap-from .sw-name { color: var(--red); font-weight: 700; font-size: 11px; }
+  .swap-to   { background: var(--teal-dim); border: 1px solid rgba(0,201,177,0.2); color: #5aaa99; }
+  .swap-to .sw-name { color: var(--teal); font-weight: 700; font-size: 11px; }
+  .swap-arrow { text-align: center; font-size: 14px; color: var(--dim); padding-top: 14px; }
+  .swap-save { margin-top: 10px; font-size: 10px; color: var(--muted); }
+  .swap-save strong { color: var(--teal); font-weight: 700; }
+
+  /* ── Cost table ─────────────────────────────────────── */
+  .cost-wrap { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    background: var(--s2); padding: 8px 14px; text-align: left;
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--muted); font-weight: 700; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 9px 14px; font-size: 11px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-weight: 600; color: var(--text); }
+  td:nth-child(3) { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+  .c-free { color: var(--blue); }
+  .c-low  { color: var(--teal); }
+  .c-med  { color: var(--gold); }
+  .c-high { color: var(--red); }
+  .c-bold { color: #fff; }
+  .tr-total { background: rgba(0,201,177,0.05); }
+  .tr-orig  { background: rgba(240,79,84,0.04); }
+  .tr-orig td { color: var(--red); font-style: italic; }
+  .tr-orig td:first-child { color: var(--red); }
+  .tag-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .tp-s { background: var(--teal-dim); color: var(--teal); }
+  .tp-m { background: var(--blue-dim); color: var(--blue); }
+  .tp-p { background: var(--amber-dim); color: var(--amber); }
+  .tp-f { background: rgba(255,255,255,0.06); color: var(--muted); }
+
+  /* ── Principles ─────────────────────────────────────── */
+  .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .p-card {
+    background: var(--s1); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; transition: border-color 0.2s;
+  }
+  .p-card:hover { border-color: var(--border2); }
+  .p-icon { font-size: 22px; margin-bottom: 8px; }
+  .p-title { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 6px; letter-spacing: -0.2px; }
+  .p-desc { font-size: 11px; color: var(--muted); line-height: 1.65; }
+  .p-highlight { color: var(--teal); font-weight: 600; }
+
+  /* ── Footer ─────────────────────────────────────────── */
+  .footer { margin-top: 40px; text-align: center; font-size: 10px; color: var(--dim); }
+
+  /* ── Responsive ─────────────────────────────────────── */
+  @media (max-width: 680px) {
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .swaps { grid-template-columns: 1fr; }
+    .principles { grid-template-columns: 1fr; }
+    .swap-vs { grid-template-columns: 1fr; }
+    .swap-arrow { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ── -->
+  <div class="hd">
+    <div class="hd-badge">AWS · 100% Serverless · Pay-per-use</div>
+    <h1>Low-Cost <span>Autonomous Agent</span> Architecture</h1>
+    <p>Optimised from the Datrixmind reference — every service scales to zero, you pay only for queries answered.</p>
+  </div>
+
+  <!-- ── Key Numbers ── -->
+  <div class="metrics">
+    <div class="metric"><div class="num num-green">~75%</div><div class="lbl">Cost Reduction</div></div>
+    <div class="metric"><div class="num num-white">$0</div><div class="lbl">Idle Cost</div></div>
+    <div class="metric"><div class="num num-amber">$30–75</div><div class="lbl">Est. / month (10K queries)</div></div>
+    <div class="metric"><div class="num num-blue">100%</div><div class="lbl">Serverless / managed</div></div>
+  </div>
+
+  <!-- ══════════════════════════════
+       ARCHITECTURE LAYERS
+  ══════════════════════════════════ -->
+  <div class="sec-title">Architecture Layers — top to bottom data flow</div>
+
+  <!-- Users -->
+  <div class="layer l-users">
+    <div class="lhd">
+      <div class="ltitle">👤 Users &amp; Channels</div>
+      <div class="lcost">~$0 infra cost</div>
+    </div>
+    <div class="lbody">
+      <div class="chips">
+        <div class="chip chip-k">🌐 Web App (CloudFront static)</div>
+        <div class="chip chip-k">📱 Mobile App</div>
+        <div class="chip chip-k">🔌 API Clients</div>
+        <div class="chip chip-o">📧 Email via SES + SNS</div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-label">❌ Deferred</div>
+        <div class="rm-chips">
+          <span class="rm-chip">Slack App (direct)</span>
+          <span class="rm-chip">Microsoft Teams Bot</span>
+          <span class="rm-chip">Voice / IVR</span>
+          <span class="rm-chip">Service Portal</span>
+        </div>
+      </div>
+      <div class="tip">Slack &amp; Teams can be added later via <strong>EventBridge webhook targets</strong> — zero cost until first event fires. Start API-first, expand channels as adoption grows.</div>
+    </div>
+  </div>
+
+  <div class="flow"><div class="flow-line"></div>HTTPS / WebSocket<div class="flow-line"></div></div>
+
+  <!-- Entry -->
+  <div class="layer l-entry">
+    <div class="lhd">
+      <div class="ltitle">🔀 Entry &amp; Security</div>
+      <div class="lcost">~$6–15 / month</div>
+    </div>
+    <div class="lbody">
+      <div class="chips">
+        <div class="chip chip-k">☁️ CloudFront CDN</div>
+        <div class="chip chip-k">🔗 API Gateway HTTP API <em>(70% cheaper than REST)</em></div>
+        <div class="chip chip-k">🔐 Cognito User Pools <em>(free ≤ 50K MAU)</em></div>
+        <div class="chip chip-o">🛡️ WAF — 1 ACL + 3 core rules only</div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-label">❌ Removed</div>
+        <div class="rm-chips">
+          <span class="rm-chip">Route 53 advanced routing</span>
+          <span class="rm-chip">WAF managed rule groups ($5–20 each)</span>
+          <span class="rm-chip">REST API (use HTTP API instead)</span>
+        </div>
+      </div>
+      <div class="tip"><strong>Switch REST → HTTP API</strong> in API Gateway: identical features for agent use-cases, 71% lower per-call price. Enable WebSocket API for real-time streaming responses at no extra base cost.</div>
+    </div>
+  </div>
+
+  <div class="flow"><div class="flow-line"></div>Lambda Invoke<div class="flow-line"></div></div>
+
+  <!-- Agent -->
+  <div class="layer l-agent">
+    <div class="lhd">
+      <div class="ltitle">🤖 Agent Orchestration Layer — Amazon Bedrock Agents</div>
+      <div class="lcost">~$5–20 / month</div>
+    </div>
+    <div class="lbody">
+      <div class="chips">
+        <div class="chip chip-n">🧠 Single Bedrock Agent (multi-capability routing)</div>
+        <div class="chip chip-k">⚡ Lambda Orchestrator (state, routing, tool dispatch)</div>
+        <div class="chip chip-n">🛠️ Lambda Action Groups (all specialist tools)</div>
+        <div class="chip chip-k">🗂️ DynamoDB (conversation context per session)</div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-label">❌ Consolidated — was 6 separate agents</div>
+        <div class="rm-chips">
+          <span class="rm-chip">ITSM Specialist Agent</span>
+          <span class="rm-chip">DevOps Agent</span>
+          <span class="rm-chip">Security Agent</span>
+          <span class="rm-chip">FinOps Agent</span>
+          <span class="rm-chip">Reporting Agent</span>
+          <span class="rm-chip">Amazon Lex (NLU)</span>
+          <span class="rm-chip">Amazon Comprehend</span>
+          <span class="rm-chip">Amazon Polly (TTS)</span>
+        </div>
+      </div>
+      <div class="tip"><strong>One agent, many Lambda action groups</strong> — the Bedrock Agent's system prompt routes to the right "mode" (ITSM, DevOps, FinOps…) based on intent. Bedrock handles all planning, tool use, and multi-step reasoning natively — Lex and Comprehend become redundant. Agent capabilities: Planning &amp; Reasoning, Tool Use, Memory Access, Knowledge Retrieval, Human Handoff — all built in.</div>
+    </div>
+  </div>
+
+  <div class="flow"><div class="flow-line"></div>Bedrock InvokeModel<div class="flow-line"></div></div>
+
+  <!-- Intelligence -->
+  <div class="layer l-intel">
+    <div class="lhd">
+      <div class="ltitle">🧠 Intelligence Layer — AWS Bedrock</div>
+      <div class="lcost">~$25–55 / month</div>
+    </div>
+    <div class="lbody">
+      <div class="chips">
+        <div class="chip chip-n">⚡ Amazon Nova Micro — intent routing ($0.000035/1K tokens)</div>
+        <div class="chip chip-n">💬 Claude Haiku 3 — most interactions ($0.00025/1K input)</div>
+        <div class="chip chip-o">🔮 Claude Sonnet 3.5 — complex reasoning only (~10% of calls)</div>
+        <div class="chip chip-k">🛡️ Bedrock Guardrails (content + PII filters)</div>
+        <div class="chip chip-k">📝 Bedrock Prompt Management + Caching</div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-label">❌ Optimised / Removed</div>
+        <div class="rm-chips">
+          <span class="rm-chip">Provisioned throughput endpoints</span>
+          <span class="rm-chip">Titan Embeddings (KB uses its own)</span>
+          <span class="rm-chip">Continuous Model Evaluation pipeline</span>
+          <span class="rm-chip">Llama 3 (redundant alongside Haiku)</span>
+        </div>
+      </div>
+      <div class="tip"><strong>Model tiering</strong> is the biggest lever after the vector DB swap. Route classification &amp; reformatting through Nova Micro, routine chat through Haiku, and reserve Sonnet only for genuine multi-step reasoning. <strong>Enable Bedrock Prompt Caching</strong> — system prompts repeated across calls (often 2–5 K tokens) are cached at 90% discount. Together these cuts cut model spend by 50–70%.</div>
+    </div>
+  </div>
+
+  <div class="flow"><div class="flow-line"></div>RAG retrieval + memory R/W<div class="flow-line"></div></div>
+
+  <!-- Knowledge -->
+  <div class="layer l-know">
+    <div class="lhd">
+      <div class="ltitle">📚 Knowledge &amp; Memory Layer (RAG + Memory)</div>
+      <div class="lcost">~$6–20 / month</div>
+    </div>
+    <div class="lbody">
+      <div class="chips">
+        <div class="chip chip-n">📦 Bedrock Knowledge Base (managed ingestion, chunking, embeddings)</div>
+        <div class="chip chip-n">🐘 Aurora Serverless v2 + pgvector — vector store (0 ACU idle)</div>
+        <div class="chip chip-k">🗄️ S3 — raw docs + processed data (~$0.023/GB)</div>
+        <div class="chip chip-k">⚡ Lambda Transform — doc processing on S3 event</div>
+        <div class="chip chip-k">🗂️ DynamoDB on-demand — short + long-term memory</div>
+        <div class="chip chip-o">🕒 DynamoDB TTL — session store (replaces ElastiCache)</div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-label">❌ Replaced — largest savings</div>
+        <div class="rm-chips">
+          <span class="rm-chip">OpenSearch Serverless (~$700/mo min, 2 OCU idle)</span>
+          <span class="rm-chip">ElastiCache Redis ($50–200/mo always-on)</span>
+          <span class="rm-chip">Aurora RDS (always-on ~$100+/mo)</span>
+          <span class="rm-chip">AWS Glue Crawlers (Lambda replaces)</span>
+          <span class="rm-chip">Amazon Textract (call on-demand only)</span>
+        </div>
+      </div>
+      <div class="tip"><strong>Aurora Serverless v2 with pgvector</strong> is a native Bedrock KB vector store that scales to 0 ACUs at idle ($0). OpenSearch Serverless enforces a minimum of 2 OCUs even at complete rest — that's ~$690/month before a single query. For corpora under 500K documents, pgvector matches retrieval quality at ~5% of the cost. <strong>Bedrock KB</strong> handles the entire ingestion pipeline (chunking → embedding → sync) so custom Glue crawlers and orchestration code are eliminated.</div>
+    </div>
+  </div>
+
+  <div class="flow"><div class="flow-line"></div>async tool invocations<div class="flow-line"></div></div>
+
+  <!-- Actions -->
+  <div class="layer l-act">
+    <div class="lhd">
+      <div class="ltitle">⚙️ Action Execution Layer — Tools &amp; Automation</div>
+      <div class="lcost">~$1–8 / month</div>
+    </div>
+    <div class="lbody">
+      <div class="chips">
+        <div class="chip chip-k">⚡ Lambda — all tool functions (pay per millisecond)</div>
+        <div class="chip chip-k">📨 EventBridge — routing, scheduling, webhook fan-out</div>
+        <div class="chip chip-k">📬 SQS Standard — async task queues ($0.40/M messages)</div>
+        <div class="chip chip-k">📢 SNS — notifications, human-in-the-loop alerts</div>
+        <div class="chip chip-n">🔄 Step Functions Express — short workflows only (&lt;5 min)</div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-label">❌ Replaced</div>
+        <div class="rm-chips">
+          <span class="rm-chip">Step Functions Standard ($0.025/1K transitions)</span>
+        </div>
+      </div>
+      <div class="tip"><strong>Step Functions Express vs Standard</strong>: Express costs $0.00001/transition — 2,500× cheaper than Standard's $0.025/1K. For agent tool workflows under 5 minutes this is a free swap. Lambda's first 1M invocations/month are always free; at 10K agent queries generating ~10 tool calls each, you're well inside free tier.</div>
+    </div>
+  </div>
+
+  <div class="flow"><div class="flow-line"></div>audit logs + credentials<div class="flow-line"></div></div>
+
+  <!-- Security -->
+  <div class="layer l-sec">
+    <div class="lhd">
+      <div class="ltitle">🔒 Security &amp; Observability — Essential Only</div>
+      <div class="lcost">~$8–18 / month</div>
+    </div>
+    <div class="lbody">
+      <div class="chips">
+        <div class="chip chip-k">📊 CloudWatch Logs (7-day retention on Lambda groups)</div>
+        <div class="chip chip-k">🔑 IAM Identity Center + Roles &amp; Policies (free)</div>
+        <div class="chip chip-k">🔐 Secrets Manager ($0.40/secret/month)</div>
+        <div class="chip chip-k">🔒 VPC Endpoints for S3 + DynamoDB (free gateway type)</div>
+        <div class="chip chip-o">🔍 X-Ray at 1% sampling rate</div>
+        <div class="chip chip-k">📋 CloudTrail (management events only, free)</div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-label">❌ Deferred until compliance requires</div>
+        <div class="rm-chips">
+          <span class="rm-chip">GuardDuty (~$3/M events)</span>
+          <span class="rm-chip">Security Hub</span>
+          <span class="rm-chip">AWS Config all rules ($0.003/rule eval)</span>
+          <span class="rm-chip">CloudTrail data events (S3/Lambda)</span>
+          <span class="rm-chip">Health Dashboard premium</span>
+        </div>
+      </div>
+      <div class="tip"><strong>CloudWatch log costs are the hidden killer</strong> — Lambda log groups default to never expire. Set retention to 7 days; use structured JSON logs to reduce volume. X-Ray at 1% is sufficient for P99 debugging. Add GuardDuty and Security Hub only when ISO 27001 / SOC 2 compliance is required — they add $50–200/month each.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════
+       KEY ARCHITECTURE SWAPS
+  ══════════════════════════════════ -->
+  <div class="sec-title">Key Architecture Swaps</div>
+
+  <div class="swaps">
+    <div class="swap-card">
+      <div class="swap-head">🗄️ Vector Store</div>
+      <div class="swap-vs">
+        <div class="swap-from">
+          <div class="sw-name">OpenSearch Serverless</div>
+          Min 2 OCUs × $0.24/hr × 720 hrs<br>
+          <strong style="color:var(--red)">~$692/month at complete idle</strong>
+        </div>
+        <div class="swap-arrow">→</div>
+        <div class="swap-to">
+          <div class="sw-name">Aurora Serverless v2 + pgvector</div>
+          Scales to 0 ACUs at idle<br>
+          <strong style="color:var(--teal)">~$4–15/month when active</strong>
+        </div>
+      </div>
+      <div class="swap-save">Monthly saving: <strong>$680+</strong> — single biggest lever. Bedrock KB supports Aurora as a native vector store.</div>
+    </div>
+
+    <div class="swap-card">
+      <div class="swap-head">💾 Session / Cache Store</div>
+      <div class="swap-vs">
+        <div class="swap-from">
+          <div class="sw-name">ElastiCache Redis</div>
+          cache.t4g.small single node, always-on<br>
+          <strong style="color:var(--red)">~$40–150/month minimum</strong>
+        </div>
+        <div class="swap-arrow">→</div>
+        <div class="swap-to">
+          <div class="sw-name">DynamoDB on-demand + TTL</div>
+          Scales to zero, TTL auto-expires sessions<br>
+          <strong style="color:var(--teal)">~$0.50–3/month</strong>
+        </div>
+      </div>
+      <div class="swap-save">Monthly saving: <strong>$40–150</strong> — no cache has a true serverless mode. DynamoDB P99 &lt;10ms covers agent session reads.</div>
+    </div>
+
+    <div class="swap-card">
+      <div class="swap-head">🤖 Agent Design</div>
+      <div class="swap-vs">
+        <div class="swap-from">
+          <div class="sw-name">6 Specialist Bedrock Agents</div>
+          Each with own KB, prompt version, overhead<br>
+          <strong style="color:var(--red)">6× operational complexity</strong>
+        </div>
+        <div class="swap-arrow">→</div>
+        <div class="swap-to">
+          <div class="sw-name">1 Agent + Lambda Action Groups</div>
+          Shared KB, system prompt routing, simpler ops<br>
+          <strong style="color:var(--teal)">Same capabilities, 1× overhead</strong>
+        </div>
+      </div>
+      <div class="swap-save">Saving: lower latency per query, simpler deployments, <strong>identical user-facing capability</strong>.</div>
+    </div>
+
+    <div class="swap-card">
+      <div class="swap-head">🔁 Orchestration Workflows</div>
+      <div class="swap-vs">
+        <div class="swap-from">
+          <div class="sw-name">Step Functions Standard</div>
+          $0.025 per 1,000 state transitions<br>
+          <strong style="color:var(--red)">Expensive at any meaningful volume</strong>
+        </div>
+        <div class="swap-arrow">→</div>
+        <div class="swap-to">
+          <div class="sw-name">Step Functions Express</div>
+          $0.00001 per transition, duration-priced<br>
+          <strong style="color:var(--teal)">2,500× cheaper per transition</strong>
+        </div>
+      </div>
+      <div class="swap-save">Monthly saving: <strong>$30–150</strong> at moderate workflow volume. Express supports all agent tool workflows under 5 minutes.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════
+       COST TABLE
+  ══════════════════════════════════ -->
+  <div class="sec-title">Monthly Cost Estimate — 10,000 Agent Interactions</div>
+
+  <div class="cost-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>What it handles at 10K interactions</th>
+          <th>Est. monthly cost</th>
+          <th>Billing model</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CloudFront + API Gateway HTTP API</td>
+          <td>10K API calls, ~5 GB egress</td>
+          <td class="c-free">$1–4</td>
+          <td><span class="tag-pill tp-p">Per request</span></td>
+        </tr>
+        <tr>
+          <td>Cognito User Pools</td>
+          <td>&lt; 50K monthly active users</td>
+          <td class="c-free">$0 (free tier)</td>
+          <td><span class="tag-pill tp-f">Free tier</span></td>
+        </tr>
+        <tr>
+          <td>AWS Lambda</td>
+          <td>~100K invocations, 512 MB / 200 ms avg</td>
+          <td class="c-free">~$0 (free tier covers this)</td>
+          <td><span class="tag-pill tp-s">Serverless</span></td>
+        </tr>
+        <tr>
+          <td>Bedrock — Amazon Nova Micro</td>
+          <td>Intent classification, ~2M tokens/month</td>
+          <td class="c-free">$0.07</td>
+          <td><span class="tag-pill tp-p">Per token</span></td>
+        </tr>
+        <tr>
+          <td>Bedrock — Claude Haiku 3</td>
+          <td>~80% of interactions, 8M in + 4M out tokens</td>
+          <td class="c-low">$2–7</td>
+          <td><span class="tag-pill tp-p">Per token</span></td>
+        </tr>
+        <tr>
+          <td>Bedrock — Claude Sonnet 3.5</td>
+          <td>Complex tasks, ~10% of interactions</td>
+          <td class="c-med">$10–25</td>
+          <td><span class="tag-pill tp-p">Per token</span></td>
+        </tr>
+        <tr>
+          <td>Bedrock Prompt Caching (savings)</td>
+          <td>System prompts cached at 90% discount</td>
+          <td class="c-free">−$5 to −$15</td>
+          <td><span class="tag-pill tp-p">Per cached token</span></td>
+        </tr>
+        <tr>
+          <td>Bedrock Knowledge Base</td>
+          <td>10K RAG queries + periodic S3 sync</td>
+          <td class="c-low">$1–3</td>
+          <td><span class="tag-pill tp-p">Per query</span></td>
+        </tr>
+        <tr>
+          <td>Aurora Serverless v2 + pgvector</td>
+          <td>Active ~2 hrs/day average, 0 ACU otherwise</td>
+          <td class="c-low">$4–15</td>
+          <td><span class="tag-pill tp-s">Serverless</span></td>
+        </tr>
+        <tr>
+          <td>DynamoDB on-demand</td>
+          <td>Memory, session, context — ~200K R/W ops</td>
+          <td class="c-low">$1–4</td>
+          <td><span class="tag-pill tp-s">Serverless</span></td>
+        </tr>
+        <tr>
+          <td>Amazon S3</td>
+          <td>10 GB docs + embeddings, ~50K requests</td>
+          <td class="c-free">$0.25</td>
+          <td><span class="tag-pill tp-p">Per GB/request</span></td>
+        </tr>
+        <tr>
+          <td>SQS + SNS + EventBridge</td>
+          <td>~500K async events and messages</td>
+          <td class="c-free">$0.50</td>
+          <td><span class="tag-pill tp-p">Per event</span></td>
+        </tr>
+        <tr>
+          <td>Step Functions Express</td>
+          <td>~50K workflow executions</td>
+          <td class="c-free">$0.25</td>
+          <td><span class="tag-pill tp-s">Serverless</span></td>
+        </tr>
+        <tr>
+          <td>CloudWatch + Secrets Manager</td>
+          <td>7-day log retention, 10 secrets, basic alarms</td>
+          <td class="c-low">$5–10</td>
+          <td><span class="tag-pill tp-m">Managed</span></td>
+        </tr>
+        <tr>
+          <td>AWS WAF (minimal)</td>
+          <td>1 web ACL + 3 custom rules</td>
+          <td class="c-low">$6</td>
+          <td><span class="tag-pill tp-m">Managed</span></td>
+        </tr>
+        <tr class="tr-total">
+          <td>✅ Optimised total</td>
+          <td>10,000 agent interactions / month</td>
+          <td class="c-bold" style="color:var(--teal); font-weight:800;">$30–75 / month</td>
+          <td><span class="tag-pill tp-s">100% Serverless</span></td>
+        </tr>
+        <tr class="tr-orig">
+          <td>Original architecture (same load)</td>
+          <td>OpenSearch + ElastiCache + always-on Aurora + 6 agents + Lex</td>
+          <td>~$900–1,500 / month</td>
+          <td>Mix incl. always-on services</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ══════════════════════════════
+       PRINCIPLES
+  ══════════════════════════════════ -->
+  <div class="sec-title">Six Design Principles</div>
+
+  <div class="principles">
+    <div class="p-card">
+      <div class="p-icon">🏗️</div>
+      <div class="p-title">Scale-to-Zero Everything</div>
+      <div class="p-desc">Every service must cost <span class="p-highlight">$0 at idle</span>. Aurora Serverless v2 (0 ACU min), DynamoDB on-demand, Lambda, SQS — none charge when unused. If a component has a minimum always-on cost, replace it.</div>
+    </div>
+    <div class="p-card">
+      <div class="p-icon">🎚️</div>
+      <div class="p-title">Model Tiering + Prompt Caching</div>
+      <div class="p-desc">Route to the <span class="p-highlight">cheapest model</span> that can complete the task: Nova Micro → Haiku 3 → Sonnet 3.5. Enable Bedrock Prompt Caching — system prompts repeated across calls are served at 90% discount.</div>
+    </div>
+    <div class="p-card">
+      <div class="p-icon">🗄️</div>
+      <div class="p-title">Aurora pgvector over OpenSearch</div>
+      <div class="p-desc">OpenSearch Serverless charges 2 OCU minimum regardless of load — <span class="p-highlight">~$692/month at complete idle</span>. Aurora Serverless v2 with pgvector is a first-class Bedrock KB vector store that costs $0 idle.</div>
+    </div>
+    <div class="p-card">
+      <div class="p-icon">🤖</div>
+      <div class="p-title">Single Agent Pattern</div>
+      <div class="p-desc">One Bedrock Agent with <span class="p-highlight">specialist Lambda action groups</span> replaces 6 separate specialist agents. Same agent capabilities (planning, memory, tool use, handoff), one shared knowledge base, far simpler CI/CD.</div>
+    </div>
+    <div class="p-card">
+      <div class="p-icon">📦</div>
+      <div class="p-title">Bedrock KB Handles Ingestion</div>
+      <div class="p-desc">Bedrock Knowledge Base manages <span class="p-highlight">chunking, embedding, and sync natively</span> — eliminating custom Glue crawlers, Textract orchestration pipelines, and bespoke embedding code. Trigger sync on S3 PutObject via EventBridge.</div>
+    </div>
+    <div class="p-card">
+      <div class="p-icon">📊</div>
+      <div class="p-title">Minimal Observability Until Scale</div>
+      <div class="p-desc">Set Lambda log groups to <span class="p-highlight">7-day retention</span>. X-Ray at 1% sampling. Defer GuardDuty, Security Hub, and Config until ISO 27001 / SOC 2 / HIPAA compliance requires them — saves $100–300/month at this scale.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Designed for the AWS Bedrock + Aurora Serverless v2 stack · All prices as of mid-2025 AWS public pricing · Actual costs vary with token volume and regional rates
+    <div class="flow"><div class="flow-line"></div>Gaurav Kumar<div class="flow-line"></div></div>
+
+  </div>
+
+</div>
+</body>
+</html>
