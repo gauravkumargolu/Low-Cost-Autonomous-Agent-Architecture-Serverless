@@ -1,0 +1,28 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch local Chrome",
+            "type": "pwa-chrome",
+            "request": "launch",
+            "url": "file://${workspaceFolder}/serverless-agent-architecture.html",
+            "webRoot": "${workspaceFolder}",
+            "runtimeExecutable": "/usr/bin/chromium-browser",
+            "runtimeArgs": [
+                "--new-window",
+                "--user-data-dir=${workspaceFolder}/.vscode/chrome-profile",
+                "--disable-extensions"
+            ]
+        },
+        {
+            "name": "Attach to running Chrome",
+            "type": "pwa-chrome",
+            "request": "attach",
+            "port": 9222,
+            "webRoot": "${workspaceFolder}"
+        }
+    ]
+}
